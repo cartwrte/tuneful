@@ -17,4 +17,4 @@ goog.addDependency("../cljs/reader.js", ['cljs.reader'], ['goog.string', 'cljs.c
 goog.addDependency("../jayq/core.js", ['jayq.core'], ['cljs.core', 'clojure.string', 'cljs.reader']);
 goog.addDependency("../dommy/utils.js", ['dommy.utils'], ['cljs.core']);
 goog.addDependency("../dommy/core.js", ['dommy.core'], ['cljs.core', 'dommy.utils', 'clojure.string']);
-goog.addDependency("../tunefulweb/core.js", ['tunefulweb.core'], ['crate.core', 'cljs.core', 'cljs.core.async', 'jayq.core', 'dommy.core', 'clojure.string', 'goog.events']);
+goog.addDependency("../tunefulweb/core.js", ['tunefulweb.core'], ['goog.net.Jsonp', 'crate.core', 'goog.string', 'goog.Uri', 'cljs.core', 'cljs.core.async', 'jayq.core', 'goog.string.format', 'dommy.core', 'clojure.string', 'goog.events']);

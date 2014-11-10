@@ -3,49 +3,68 @@
             [dommy.core :as d :refer-macros [sel sel1]]
             [crate.core :as crate]
             [goog.events :as events]
+            [goog.string]
+            [goog.string.format]
             [cljs.core.async :refer [put! chan <!]]
             [clojure.string :as string])
   (:require-macros [crate.def-macros :refer [defpartial]]
                    [tunefulweb.macros :as macros]
                    [cljs.core.async.macros :refer [go]]
-                   [jayq.macros :refer [let-ajax]]))
+                   [jayq.macros :refer [let-ajax]])
+  (:import [goog.net Jsonp]
+           [goog Uri]))
 
 ;; ============================= ;;
 ;; TODO:                         ;;
 ;; ----------------------------- ;;
-;; * Format price/currency       ;;
-;; * Auto country chooser        ;;  
+;; X Format price/currency       ;;
+;; X Auto country chooser        ;;  
 ;; * Remove TH when no results   ;;
 ;; * Handle ajax failure         ;;
 ;; * Separate M V & C            ;;
 ;; * core.async + goog.net.Jsonp ;;
 ;; X Format titles               ;;
+;; O Use Transit for JSON        ;;
 ;; * Tests                       ;;
 ;; ============================= ;;
 
 (enable-console-print!)
 
-(def currencies {:GB ["£" ".02f"]
-                 :US ["$" ".02f"]})
+(defonce locale (atom ""))
 
-;; Figure out locale
-;;
-;;(defn locale []
-;;  (let [result (promise)])
-;;  
-;;  (ajax "http://ajaxhttpheaders.appspot.com"
-;;        {:dataType :JSONP
-;;         :success  (fn [_ status xhr]
-;;                     (let [data (js->clj (.-responseJSON xhr) :keywordize-keys true)]
-;;                       (-> (sel1 :#country)
-;;                           (d/set-text! (:X-Appengine-Country data)))))}))
-;;(locale)
-;;
+(def ^:const currencies {:GB ["£" 2]
+                         :US ["$" 2]})
 
-(let-ajax [locale {:url "http://ajaxhttpheaders.appspot.com"
-                   :dataType :jsonp}]
-          (println (str "What did we get? "
-                        (:X-Appengine-Country (js->clj locale :keywordize-keys true)))))
+(defn format-s
+  "Formats a string using goog.string.format."
+  [fmt & args]
+  (apply goog.string/format fmt args))
+
+(defn format-price
+  [price]
+  (let [[currency num-dp] ((keyword @locale) currencies)]
+    (str currency (.toFixed price num-dp))))
+
+(defn <jsonp [uri]
+  (let [out (chan)
+        req (Jsonp. (Uri. uri))]
+    (.send req nil (fn [res] (put! out res)))
+    out))
+
+;; Discover the locale. Don't allow a search to
+;; begin until we know what this is.
+(go
+  (let [{ctry :X-Appengine-Country}
+        (js->clj (<! (<jsonp "http://ajaxhttpheaders.appspot.com"))
+                 :keywordize-keys true)]
+    (swap! locale str ctry)
+    (-> (sel1 :#search)
+        (d/remove-attr! :disabled)
+        (d/set-text! (str "search " @locale)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; end of experiments ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn tds-from
   "Create Crate :td entries from the map m, using only the 
@@ -81,21 +100,26 @@
   [:a {:href itunesUrl :target "_blank"}
    [:img {:src artUrl}]])
 
-(defn convert-artwork-urls
-  [data]
-  (map #(assoc % :icon (make-icon (:artworkUrl100 %) (:collectionViewUrl %)))
-       data))
-
 (defpartial google-link
   [artist album]
   (let [link (str "https://www.google.co.uk/#q="
                   (js/encodeURIComponent (str \" artist "\" "))
                   (js/encodeURIComponent (str \" album "\" review")))]
-    [:a {:href link :target "_blank"} "Search"]))
+    [:a {:href link :target "_blank"} (str "search " @locale)]))
+
+(defn convert-artwork-urls
+  [data]
+  (map #(assoc % :icon (make-icon (:artworkUrl100 %) (:collectionViewUrl %)))
+       data))
 
 (defn add-google-links
   [data]
   (map #(assoc % :reviews (google-link (:artistName %) (:collectionName %)))
+       data))
+
+(defn format-prices
+  [data]
+  (map #(assoc % :collectionPrice (format-price (:collectionPrice %)))
        data))
 
 (defn display
@@ -116,16 +140,18 @@
         (d/clear!)
         (d/append! (tabulate (-> (filter-1 (sort-by :collectionPrice results))
                                  (add-google-links)
+                                 (format-prices)
                                  (convert-artwork-urls))
                              ks)))
     (-> (sel1 :#search)
         (d/remove-attr! :disabled)
-        (d/set-text! "Search"))
+        (d/set-text! (str "search " @locale)))
     (-> (sel1 :#term) (d/remove-attr! :disabled))))
 
 (defn search [term]
   (ajax (str "http://itunes.apple.com/search?term=" term
-             "&media=music&limit=300&country=GB&entity=album&genreId=5")
+             "&media=music&limit=300&country=" @locale
+             "&entity=album&genreId=5")
         {:dataType "JSONP"
          :success  display}))
 
@@ -135,7 +161,7 @@
       (println "No term!")
       (do (-> (sel1 :#search)
               (d/set-attr! :disabled)
-              (d/set-text! "Searching..."))
+              (d/set-text! "searching..."))
           (-> (sel1 :#search-text)
               (d/set-text! term))
           (-> (sel1 :#term)

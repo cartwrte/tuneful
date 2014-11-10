@@ -22,9 +22,12 @@
 ;; * Remove TH when no results   ;;
 ;; * Handle ajax failure         ;;
 ;; * Separate M V & C            ;;
-;; * core.async + goog.net.Jsonp ;;
+;; / core.async + goog.net.Jsonp ;;
 ;; X Format titles               ;;
 ;; O Use Transit for JSON        ;;
+;; * Perhaps order by            ;;
+;;   price/number of tracks?     ;;
+;; * Title wrap for long terms   ;;
 ;; * Tests                       ;;
 ;; ============================= ;;
 
@@ -105,11 +108,11 @@
   (let [link (str "https://www.google.co.uk/#q="
                   (js/encodeURIComponent (str \" artist "\" "))
                   (js/encodeURIComponent (str \" album "\" review")))]
-    [:a {:href link :target "_blank"} (str "search " @locale)]))
+    [:a {:href link :target "_blank"} "search"]))
 
 (defn convert-artwork-urls
   [data]
-  (map #(assoc % :icon (make-icon (:artworkUrl100 %) (:collectionViewUrl %)))
+  (map #(assoc % :icon (make-icon (:artworkUrl60 %) (:collectionViewUrl %)))
        data))
 
 (defn add-google-links
@@ -163,7 +166,7 @@
               (d/set-attr! :disabled)
               (d/set-text! "searching..."))
           (-> (sel1 :#search-text)
-              (d/set-text! term))
+              (d/set-text! (.toLowerCase term)))
           (-> (sel1 :#term)
               (d/set-attr! :disabled))
           (-> (sel1 :#content)

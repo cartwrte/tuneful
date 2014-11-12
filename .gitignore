@@ -1,3 +1,4 @@
+tunefulweb.iml
 pom.xml
 *jar
 /lib/
@@ -7,4 +8,6 @@ pom.xml
 .lein-deps-sum
 .lein-repl-history
 .lein-plugins/
+.idea
 *.*~
+.nrepl-port

@@ -3,8 +3,6 @@
             [dommy.core :as d :refer-macros [sel sel1]]
             [crate.core :as crate]
             [goog.events :as events]
-            [goog.string]
-            [goog.string.format]
             [cljs.core.async :refer [put! chan <!]]
             [clojure.string :as string])
   (:require-macros [crate.def-macros :refer [defpartial]]
@@ -14,11 +12,28 @@
   (:import [goog.net Jsonp]
            [goog Uri]))
 
+#_(
+   (loop [html [:p]
+          remaining s
+          last-idx 0]
+     (if (= (.indexOf remaining "test") -1)
+       (conj html remaining)
+       (let [idx (.indexOf remaining "test")
+             prev (subs remaining 0 (dec idx))
+             end (+ idx (count "test"))]
+         (recur
+          (conj (conj html prev) [:span.hl "test"])
+          (subs remaining end)
+          end))))
+   )
+
 ;; ============================= ;;
 ;; TODO:                         ;;
 ;; ----------------------------- ;;
 ;; X Format price/currency       ;;
-;; X Auto country chooser        ;;  
+;; X Auto country chooser        ;;
+;; * Highlight search terms      ;;
+;;   in text                     ;;
 ;; * Remove TH when no results   ;;
 ;; * Handle ajax failure         ;;
 ;; * Separate M V & C            ;;
@@ -33,19 +48,15 @@
 
 (enable-console-print!)
 
-(defonce locale (atom ""))
+(def state (atom {:locale nil
+                  :terms []}))
 
 (def ^:const currencies {:GB ["£" 2]
                          :US ["$" 2]})
 
-(defn format-s
-  "Formats a string using goog.string.format."
-  [fmt & args]
-  (apply goog.string/format fmt args))
-
 (defn format-price
   [price]
-  (let [[currency num-dp] ((keyword @locale) currencies)]
+  (let [[currency num-dp] ((keyword (:locale @state)) currencies)]
     (str currency (.toFixed price num-dp))))
 
 (defn <jsonp [uri]
@@ -55,19 +66,16 @@
     out))
 
 ;; Discover the locale. Don't allow a search to
-;; begin until we know what this is.
+;; begin until we know what this is. Could have
+;; done with a watch instead?
 (go
   (let [{ctry :X-Appengine-Country}
         (js->clj (<! (<jsonp "http://ajaxhttpheaders.appspot.com"))
                  :keywordize-keys true)]
-    (swap! locale str ctry)
+    (swap! state assoc :locale ctry)
     (-> (sel1 :#search)
         (d/remove-attr! :disabled)
-        (d/set-text! (str "search " @locale)))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; end of experiments ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+        (d/set-text! (str "search " (:locale @state))))))
 
 (defn tds-from
   "Create Crate :td entries from the map m, using only the 
@@ -125,6 +133,38 @@
   (map #(assoc % :collectionPrice (format-price (:collectionPrice %)))
        data))
 
+(defn hl-search-terms
+  "Show all instances of the search words the user has entered in
+  string s (by marking them out as Crate constructs)."
+  [data]
+  (let [index-of (fn
+                   ([t s]
+                      (.indexOf t s))
+                   ([t s i]
+                      (.indexOf t s i)))
+        lc string/lower-case
+        actual-term (fn [t r]
+                      (let [start (index-of (lc r) (lc t))
+                            end (+ start (count t))]
+                        (subs r start end)))
+        terms (:terms @state)
+        highlight (fn [k m]
+                    (loop [html [:p]
+                           remaining (k m)
+                           last-idx 0]
+                      (if (= (index-of (lc remaining) (lc (first terms))) -1)
+                        (conj html remaining)
+                        (let [idx (index-of (lc remaining)
+                                            (lc (first terms)))
+                              actual (actual-term (first terms) remaining) ; the term as it appears 
+                              prec (subs remaining 0 (dec idx)) ; preceding string before match
+                              end (+ idx (count (first terms)))] ; idx of match end
+                          (recur
+                           (conj (conj html prec) [:span.hl actual])
+                           (subs remaining end)
+                           end)))))]
+    (map #(assoc % :collectionName (highlight :collectionName %)) data)))
+
 (defn display
   [content text-status xhr]
   (let [data (js->clj (.-responseJSON xhr) :keywordize-keys true)
@@ -144,16 +184,17 @@
         (d/append! (tabulate (-> (filter-1 (sort-by :collectionPrice results))
                                  (add-google-links)
                                  (format-prices)
+                                 (hl-search-terms)
                                  (convert-artwork-urls))
                              ks)))
     (-> (sel1 :#search)
         (d/remove-attr! :disabled)
-        (d/set-text! (str "search " @locale)))
+        (d/set-text! (str "search " (:locale @state))))
     (-> (sel1 :#term) (d/remove-attr! :disabled))))
 
 (defn search [term]
   (ajax (str "http://itunes.apple.com/search?term=" term
-             "&media=music&limit=300&country=" @locale
+             "&media=music&limit=300&country=" (:locale @state)
              "&entity=album&genreId=5")
         {:dataType "JSONP"
          :success  display}))
@@ -162,21 +203,24 @@
   (let [term (-> (sel1 :#term) d/value)]
     (if (empty? term)
       (println "No term!")
-      (do (-> (sel1 :#search)
-              (d/set-attr! :disabled)
-              (d/set-text! "searching..."))
-          (-> (sel1 :#search-text)
-              (d/set-text! (.toLowerCase term)))
-          (-> (sel1 :#term)
-              (d/set-attr! :disabled))
-          (-> (sel1 :#content)
-              (d/clear!))
-          (-> (sel1 :#resultCount)
-              (d/clear!))
-          (search term)))))
+      (do
+        (swap! state assoc :terms (string/split term #"[ ]+"))
+        (-> (sel1 :#search)
+            (d/set-attr! :disabled)
+            (d/set-text! "searching..."))
+        (-> (sel1 :#search-text)
+            (d/set-text! (.toLowerCase term)))
+        (-> (sel1 :#term)
+            (d/set-attr! :disabled))
+        (-> (sel1 :#content)
+            (d/clear!))
+        (-> (sel1 :#resultCount)
+            (d/clear!))
+        (search term)))))
 
 (d/listen! (sel1 :#search) :click start-search)
 
+;; trap enter key when pressed in search term field
 (d/listen! (sel1 :#term) :keydown
            #(when (= (.-keyCode %) 13) (start-search %)))
 

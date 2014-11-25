@@ -158,53 +158,6 @@
   (map #(assoc % :collectionPrice (format-price (:collectionPrice %)))
        data))
 
-(defn highlight
-  "Generate Crate structures to highlight the search
-  term `term` in string `s`."
-  [s term]
-  ;; Set up some helper functions
-  (let [index-of (fn
-                   ([t s]
-                      (.indexOf t s))
-                   ([t s i]
-                      (.indexOf t s i)))
-        lc string/lower-case
-        actual-term (fn [t r]
-                      (let [start (index-of (lc r) (lc t))
-                            end (+ start (count t))]
-                        (subs r start end)))]
-    ;; Create Crate expressions
-    (loop [html [:p]
-           remaining s
-           last-idx 0]
-      (if (= (index-of (lc remaining) (lc term)) -1)
-        (conj html remaining)
-        (let [idx (index-of (lc remaining)
-                            (lc term))
-              actual (actual-term term remaining) ; the term as it appears 
-              prec (subs remaining 0 (dec idx)) ; preceding string before match
-              end (+ idx (count term))] ; idx of match end
-          (recur
-           (conj (conj html prec) [:span.hl actual])
-           (subs remaining end)
-           end))))))
-
-(defn hl-search-terms
-  "Show all instances of the search words the user has entered in
-  string s (by marking them out as Crate constructs)."
-  [data]
-  (let [terms (:terms @state)]
-    ;; This effectively sends a whole string to `highlight`.
-    ;; Should `highlight` deal with recursing into a Crate
-    ;; vector, or should a helper func do the descent part?
-    ;; Could do a `(highlight-recur terms) which would pull 
-    ;; the relevant strings from any crate vecs passed in.
-    ;; The helper func could just be a local thing defined
-    ;; in a `let`. In which case, `highlight` shouldn't
-    ;; prepend the :p to the first vector it returns.
-    (map #(assoc % :collectionName
-                 (highlight (:collectionName %) (first terms))) data)))
-
 (defn truncate
   "Truncate the search terms if they're too long to display in the title"
   [term]
@@ -233,7 +186,6 @@
           (d/append! (tabulate (-> (filter-1 (sort-by :collectionPrice results))
                                    (add-google-links)
                                    (format-prices)
-                                   ;;(hl-search-terms)
                                    (convert-artwork-urls))
                                ks))))
     (-> (sel1 :#search)

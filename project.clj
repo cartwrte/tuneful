@@ -10,7 +10,8 @@
                  [prismatic/dommy "1.0.0"]]
 
   :plugins [[lein-cljsbuild "1.0.4-SNAPSHOT"]
-            [lein-simpleton "1.3.0"]]
+            [lein-simpleton "1.3.0"]
+            [lein-marginalia "0.8.0"]]
 
   :source-paths ["src"]
 

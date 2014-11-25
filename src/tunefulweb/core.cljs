@@ -2,6 +2,7 @@
   (:require [jayq.core :refer [ajax]]
             [dommy.core :as d :refer-macros [sel sel1]]
             [crate.core :as crate]
+            [clojure.browser.repl :as repl]
             [goog.events :as events]
             [cljs.core.async :refer [put! chan <!]]
             [clojure.string :as string])
@@ -12,58 +13,50 @@
   (:import [goog.net Jsonp]
            [goog Uri]))
 
-#_(
-   (loop [html [:p]
-          remaining s
-          last-idx 0]
-     (if (= (.indexOf remaining "test") -1)
-       (conj html remaining)
-       (let [idx (.indexOf remaining "test")
-             prev (subs remaining 0 (dec idx))
-             end (+ idx (count "test"))]
-         (recur
-          (conj (conj html prev) [:span.hl "test"])
-          (subs remaining end)
-          end))))
-   )
+;(repl/connect "http://localhost:9000/repl")
 
-;; ============================= ;;
-;; TODO:                         ;;
-;; ----------------------------- ;;
-;; X Format price/currency       ;;
-;; X Auto country chooser        ;;
-;; * Highlight search terms      ;;
-;;   in text                     ;;
-;; * Remove TH when no results   ;;
-;; * Handle ajax failure         ;;
-;; * Separate M V & C            ;;
-;; / core.async + goog.net.Jsonp ;;
-;; X Format titles               ;;
-;; O Use Transit for JSON        ;;
-;; * Perhaps order by            ;;
-;;   price/number of tracks?     ;;
-;; * Title wrap for long terms   ;;
-;; * Tests                       ;;
-;; ============================= ;;
+                                        ; ============================= ;
+                                        ; TODO:                         ;
+                                        ; ----------------------------- ;
+                                        ; X Format price/currency       ;
+                                        ; X Auto country chooser        ;
+                                        ; * GitHub                      ;
+                                        ; - Highlight search terms      ;
+                                        ;   in text                     ;
+                                        ; X Remove TH when no results   ;
+                                        ; * Handle ajax failure         ;
+                                        ; X Fix button                  ;
+                                        ; * Separate M V & C            ;
+                                        ; / core.async + goog.net.Jsonp ;
+                                        ; X Format titles               ;
+                                        ; O Use Transit for JSON        ;
+                                        ; * Perhaps order by            ;
+                                        ;   price/number of tracks?     ;
+                                        ; X Title wrap for long terms   ;
+                                        ; * Tests                       ;
+                                        ; ============================= ;
 
 (enable-console-print!)
 
-(def state (atom {:locale nil
-                  :terms []}))
+;; ## Forward declarations
 
-(def ^:const currencies {:GB ["£" 2]
-                         :US ["$" 2]})
+(declare <jsonp start-search)
 
-(defn format-price
-  [price]
-  (let [[currency num-dp] ((keyword (:locale @state)) currencies)]
-    (str currency (.toFixed price num-dp))))
+;; ## Global vars
 
-(defn <jsonp [uri]
-  (let [out (chan)
-        req (Jsonp. (Uri. uri))]
-    (.send req nil (fn [res] (put! out res)))
-    out))
+(def
+  ^{:doc "State of the app. Currently we maintain the locale and a 
+          list of search terms entered by the users."}
+  state (atom {:locale nil
+               :terms []}))
+
+(def
+  ^:const
+  ^{:doc "Currency formats, used by `format-price`."}
+  currencies {:GB ["£" 2]
+              :US ["$" 2]})
+
+;; ## Application setup
 
 ;; Discover the locale. Don't allow a search to
 ;; begin until we know what this is. Could have
@@ -76,6 +69,44 @@
     (-> (sel1 :#search)
         (d/remove-attr! :disabled)
         (d/set-text! (str "search " (:locale @state))))))
+
+;; ### Event binding
+
+;; When we click the search button, call `start-search`.
+(d/listen! (sel1 :#search) :click #(start-search %))
+
+;; Trap enter key when pressed in search term field and
+;; call `start-search`
+(d/listen! (sel1 :#term) :keydown
+           #(when (= (.-keyCode %) 13) (start-search %)))
+
+;; ## Functions
+
+(defn <jsonp
+  "Returns a core.async channel for getting data from `uri`."
+  [uri]
+  (let [out (chan)
+        req (Jsonp. (Uri. uri))]
+    (.send req nil (fn [res] (put! out res)))
+    out))
+
+(defn format-price
+  "Format `price` according to a user's locale using rules in the
+  global `currencies` var."
+  [price]
+  (let [[currency num-dp] ((keyword (:locale @state)) currencies)]
+    (str currency (.toFixed price num-dp))))
+
+(defn filter-1
+  "Remove items with -1 or no price."
+  [albums]
+  (filter (fn [album]
+            (and
+             (number? (:collectionPrice album))
+             (> (:collectionPrice album) -1)))
+          albums))
+
+;; ## Display functions and Crate partials
 
 (defn tds-from
   "Create Crate :td entries from the map m, using only the 
@@ -98,19 +129,13 @@
     [:tbody
      (map (fn [x] [:tr (tds-from x ks)]) data)]]))
 
-(defn filter-1
-  "Remove items with -1 or no price."
-  [albums]
-  (filter (fn [album]
-            (and
-             (number? (:collectionPrice album))
-             (> (:collectionPrice album) -1)))
-          albums))
+;; Clickable image of an album. Links to iTunes.
+(defpartial make-icon
+  [art-url itunes-url]
+  [:a {:href itunes-url :target "_blank"}
+   [:img {:src art-url}]])
 
-(defpartial make-icon [artUrl itunesUrl]
-  [:a {:href itunesUrl :target "_blank"}
-   [:img {:src artUrl}]])
-
+;; Create a link to a google search for an album.
 (defpartial google-link
   [artist album]
   (let [link (str "https://www.google.co.uk/#q="
@@ -133,10 +158,11 @@
   (map #(assoc % :collectionPrice (format-price (:collectionPrice %)))
        data))
 
-(defn hl-search-terms
-  "Show all instances of the search words the user has entered in
-  string s (by marking them out as Crate constructs)."
-  [data]
+(defn highlight
+  "Generate Crate structures to highlight the search
+  term `term` in string `s`."
+  [s term]
+  ;; Set up some helper functions
   (let [index-of (fn
                    ([t s]
                       (.indexOf t s))
@@ -146,27 +172,48 @@
         actual-term (fn [t r]
                       (let [start (index-of (lc r) (lc t))
                             end (+ start (count t))]
-                        (subs r start end)))
-        terms (:terms @state)
-        highlight (fn [k m]
-                    (loop [html [:p]
-                           remaining (k m)
-                           last-idx 0]
-                      (if (= (index-of (lc remaining) (lc (first terms))) -1)
-                        (conj html remaining)
-                        (let [idx (index-of (lc remaining)
-                                            (lc (first terms)))
-                              actual (actual-term (first terms) remaining) ; the term as it appears 
-                              prec (subs remaining 0 (dec idx)) ; preceding string before match
-                              end (+ idx (count (first terms)))] ; idx of match end
-                          (recur
-                           (conj (conj html prec) [:span.hl actual])
-                           (subs remaining end)
-                           end)))))]
-    (map #(assoc % :collectionName (highlight :collectionName %)) data)))
+                        (subs r start end)))]
+    ;; Create Crate expressions
+    (loop [html [:p]
+           remaining s
+           last-idx 0]
+      (if (= (index-of (lc remaining) (lc term)) -1)
+        (conj html remaining)
+        (let [idx (index-of (lc remaining)
+                            (lc term))
+              actual (actual-term term remaining) ; the term as it appears 
+              prec (subs remaining 0 (dec idx)) ; preceding string before match
+              end (+ idx (count term))] ; idx of match end
+          (recur
+           (conj (conj html prec) [:span.hl actual])
+           (subs remaining end)
+           end))))))
+
+(defn hl-search-terms
+  "Show all instances of the search words the user has entered in
+  string s (by marking them out as Crate constructs)."
+  [data]
+  (let [terms (:terms @state)]
+    ;; This effectively sends a whole string to `highlight`.
+    ;; Should `highlight` deal with recursing into a Crate
+    ;; vector, or should a helper func do the descent part?
+    ;; Could do a `(highlight-recur terms) which would pull 
+    ;; the relevant strings from any crate vecs passed in.
+    ;; The helper func could just be a local thing defined
+    ;; in a `let`. In which case, `highlight` shouldn't
+    ;; prepend the :p to the first vector it returns.
+    (map #(assoc % :collectionName
+                 (highlight (:collectionName %) (first terms))) data)))
+
+(defn truncate
+  "Truncate the search terms if they're too long to display in the title"
+  [term]
+  (if (> (count term) 23)
+    (str (subs term 0 23) "...")
+    term))
 
 (defn display
-  [content text-status xhr]
+  [_ _ xhr]
   (let [data (js->clj (.-responseJSON xhr) :keywordize-keys true)
         result-count (:resultCount data)
         results (:results data)
@@ -177,16 +224,18 @@
             [:collectionPrice "Price"]
             [:copyright "Label"]
             [:reviews "Reviews"]]]
-    ;;    (println results)
     (-> (sel1 :#resultCount) (d/set-html! result-count))
-    (-> (sel1 :#content)
-        (d/clear!)
-        (d/append! (tabulate (-> (filter-1 (sort-by :collectionPrice results))
-                                 (add-google-links)
-                                 (format-prices)
-                                 (hl-search-terms)
-                                 (convert-artwork-urls))
-                             ks)))
+    (if (= result-count 0)
+      (-> (sel1 :#content)
+          (d/set-html! "Nothing found"))
+      (-> (sel1 :#content)
+          (d/clear!)
+          (d/append! (tabulate (-> (filter-1 (sort-by :collectionPrice results))
+                                   (add-google-links)
+                                   (format-prices)
+                                   ;;(hl-search-terms)
+                                   (convert-artwork-urls))
+                               ks))))
     (-> (sel1 :#search)
         (d/remove-attr! :disabled)
         (d/set-text! (str "search " (:locale @state))))
@@ -209,7 +258,7 @@
             (d/set-attr! :disabled)
             (d/set-text! "searching..."))
         (-> (sel1 :#search-text)
-            (d/set-text! (.toLowerCase term)))
+            (d/set-text! (truncate (.toLowerCase term))))
         (-> (sel1 :#term)
             (d/set-attr! :disabled))
         (-> (sel1 :#content)
@@ -217,11 +266,4 @@
         (-> (sel1 :#resultCount)
             (d/clear!))
         (search term)))))
-
-(d/listen! (sel1 :#search) :click start-search)
-
-;; trap enter key when pressed in search term field
-(d/listen! (sel1 :#term) :keydown
-           #(when (= (.-keyCode %) 13) (start-search %)))
-
 

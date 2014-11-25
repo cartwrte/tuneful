@@ -6,6 +6,9 @@ goog.addDependency("../clojure/set.js", ['clojure.set'], ['cljs.core']);
 goog.addDependency("../crate/binding.js", ['crate.binding'], ['cljs.core', 'clojure.set']);
 goog.addDependency("../crate/compiler.js", ['crate.compiler'], ['goog.dom', 'cljs.core', 'goog.style', 'clojure.string', 'crate.binding']);
 goog.addDependency("../crate/core.js", ['crate.core'], ['goog.dom', 'crate.util', 'crate.compiler', 'cljs.core']);
+goog.addDependency("../clojure/browser/event.js", ['clojure.browser.event'], ['cljs.core', 'goog.events.EventTarget', 'goog.events.EventType', 'goog.events']);
+goog.addDependency("../clojure/browser/net.js", ['clojure.browser.net'], ['goog.net.xpc.CfgFields', 'goog.net.XhrIo', 'goog.json', 'goog.Uri', 'cljs.core', 'goog.net.EventType', 'goog.net.xpc.CrossPageChannel', 'clojure.browser.event']);
+goog.addDependency("../clojure/browser/repl.js", ['clojure.browser.repl'], ['cljs.core', 'clojure.browser.net', 'clojure.browser.event']);
 goog.addDependency("../cljs/core/async/impl/protocols.js", ['cljs.core.async.impl.protocols'], ['cljs.core']);
 goog.addDependency("../cljs/core/async/impl/buffers.js", ['cljs.core.async.impl.buffers'], ['cljs.core', 'cljs.core.async.impl.protocols']);
 goog.addDependency("../cljs/core/async/impl/dispatch.js", ['cljs.core.async.impl.dispatch'], ['cljs.core', 'cljs.core.async.impl.buffers']);
@@ -17,4 +20,4 @@ goog.addDependency("../cljs/reader.js", ['cljs.reader'], ['goog.string', 'cljs.c
 goog.addDependency("../jayq/core.js", ['jayq.core'], ['cljs.core', 'clojure.string', 'cljs.reader']);
 goog.addDependency("../dommy/utils.js", ['dommy.utils'], ['cljs.core']);
 goog.addDependency("../dommy/core.js", ['dommy.core'], ['cljs.core', 'dommy.utils', 'clojure.string']);
-goog.addDependency("../tunefulweb/core.js", ['tunefulweb.core'], ['goog.net.Jsonp', 'crate.core', 'goog.Uri', 'cljs.core', 'cljs.core.async', 'jayq.core', 'dommy.core', 'clojure.string', 'goog.events']);
+goog.addDependency("../tunefulweb/core.js", ['tunefulweb.core'], ['goog.net.Jsonp', 'crate.core', 'clojure.browser.repl', 'goog.Uri', 'cljs.core', 'cljs.core.async', 'jayq.core', 'dommy.core', 'clojure.string', 'goog.events']);

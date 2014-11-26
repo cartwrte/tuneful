@@ -2968,50 +2968,7 @@ call <code>start-search</code></p>
 </td><td class="codes"><pre class="brush: clojure">(defn format-prices
   [data]
   (map #(assoc % :collectionPrice (format-price (:collectionPrice %)))
-       data))</pre></td></tr><tr><td class="docs"><p>Generate Crate structures to highlight the search
-  term <code>term</code> in string <code>s</code>.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn highlight
-  [s term]
-  ;; Set up some helper functions
-  (let [index-of (fn
-                   ([t s]
-                      (.indexOf t s))
-                   ([t s i]
-                      (.indexOf t s i)))
-        lc string/lower-case
-        actual-term (fn [t r]
-                      (let [start (index-of (lc r) (lc t))
-                            end (+ start (count t))]
-                        (subs r start end)))]
-    ;; Create Crate expressions
-    (loop [html [:p]
-           remaining s
-           last-idx 0]
-      (if (= (index-of (lc remaining) (lc term)) -1)
-        (conj html remaining)
-        (let [idx (index-of (lc remaining)
-                            (lc term))
-              actual (actual-term term remaining) ; the term as it appears 
-              prec (subs remaining 0 (dec idx)) ; preceding string before match
-              end (+ idx (count term))] ; idx of match end
-          (recur
-           (conj (conj html prec) [:span.hl actual])
-           (subs remaining end)
-           end))))))</pre></td></tr><tr><td class="docs"><p>Show all instances of the search words the user has entered in
-  string s (by marking them out as Crate constructs).</p>
-</td><td class="codes"><pre class="brush: clojure">(defn hl-search-terms
-  [data]
-  (let [terms (:terms @state)]
-    ;; This effectively sends a whole string to `highlight`.
-    ;; Should `highlight` deal with recursing into a Crate
-    ;; vector, or should a helper func do the descent part?
-    ;; Could do a `(highlight-recur terms) which would pull 
-    ;; the relevant strings from any crate vecs passed in.
-    ;; The helper func could just be a local thing defined
-    ;; in a `let`. In which case, `highlight` shouldn't
-    ;; prepend the :p to the first vector it returns.
-    (map #(assoc % :collectionName
-                 (highlight (:collectionName %) (first terms))) data)))</pre></td></tr><tr><td class="docs"><p>Truncate the search terms if they're too long to display in the title</p>
+       data))</pre></td></tr><tr><td class="docs"><p>Truncate the search terms if they're too long to display in the title</p>
 </td><td class="codes"><pre class="brush: clojure">(defn truncate
   [term]
   (if (&gt; (count term) 23)
@@ -3038,7 +2995,6 @@ call <code>start-search</code></p>
           (d/append! (tabulate (-&gt; (filter-1 (sort-by :collectionPrice results))
                                    (add-google-links)
                                    (format-prices)
-                                   ;;(hl-search-terms)
                                    (convert-artwork-urls))
                                ks))))
     (-&gt; (sel1 :#search)
